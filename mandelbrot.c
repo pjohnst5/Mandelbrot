@@ -1,4 +1,19 @@
 /*
+	Paul Johnston
+	pjohnst5
+
+	Threads			Time
+	1						24.437700
+	2						12.869530
+	4						9.676765
+	8						9.178893		
+
+To change the number of threads, go to main, change numThreads
+
+*/
+
+
+/*
   This program is an adaptation of the Mandelbrot program
   from the Programming Rosetta Stone, see
   http://rosettacode.org/wiki/Mandelbrot_set
@@ -26,18 +41,30 @@
   can also add colors, for instance:
 
   convert -negate -normalize -fill blue -tint 100 pic.ppm pic.png
-
-  See http://www.imagemagick.org/Usage/color_mods/ for what ImageMagick
-  can do. It can do a lot.
 */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <stdint.h>
+#include <sys/time.h>
+#include <string.h>
+
+/* Return the current time in seconds, using a double precision number.       */
+double When()
+{
+	struct timeval tp;
+	gettimeofday(&tp, NULL);
+	return ((double) tp.tv_sec + (double) tp.tv_usec * 1e-6);
+}
 
 int main(int argc, char* argv[])
 {
+	int numThreads = 8;
+	double start = When();
+	double end;
+	double time;
+	
   /* Parse the command line arguments. */
   if (argc != 8) {
     printf("Usage:   %s <xmin> <xmax> <ymin> <ymax> <maxiter> <xres> <out.ppm>\n", argv[0]);
@@ -78,7 +105,17 @@ int main(int argc, char* argv[])
   double u, v; /* Coordinates of the iterated point. */
   int i,j; /* Pixel counters */
   int k; /* Iteration counter */
-  for (j = 0; j < yres; j++) {
+ 
+	//buffer to write to 
+	char *buff = calloc(xres * yres * 6, sizeof(char));
+ 	
+	//y, u, v, u2, v2, i, k should be private
+	//can set environment variable or omp set num threads
+	//((y*xres) + x ) * 6  y is j x is i
+
+	omp_set_num_threads(numThreads);
+	#pragma omp parallel for private(y,u,v,i,k) 
+	for (j = 0; j < yres; j++) {
     y = ymax - j * dy;
     for(i = 0; i < xres; i++) {
       double u = 0.0;
@@ -97,7 +134,8 @@ int main(int argc, char* argv[])
       if (k >= maxiter) {
         /* interior */
         const unsigned char black[] = {0, 0, 0, 0, 0, 0};
-        fwrite (black, 6, 1, fp);
+				memcpy(&buff[(((j*xres) + i)*6)], black, 6); 
+				//fwrite (black, 6, 1, fp);
       }
       else {
         /* exterior */
@@ -108,10 +146,20 @@ int main(int argc, char* argv[])
         color[3] = k & 255;
         color[4] = k >> 8;
         color[5] = k & 255;
-        fwrite(color, 6, 1, fp);
+       	memcpy(&buff[(((j*xres) + i)*6)], color, 6); 
+				//fwrite(color, 6, 1, fp);
       };
     }
   }
+	
+	//Get the ending time and total time
+	end = When();
+	time = end - start;
+
+	//Write from buffer to file
+	fwrite(buff, xres*yres*6*sizeof(char), 1, fp);	
   fclose(fp);
+
+	printf("Time taken: %f\n", time);
   return 0;
 }
